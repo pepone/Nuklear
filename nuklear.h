@@ -26084,29 +26084,33 @@ nk_slider_behavior(nk_flags *state, struct nk_rect *logical_cursor,
     float slider_step, float slider_steps)
 {
     int left_mouse_down;
-    int left_mouse_click_in_cursor;
+    int left_mouse_click_in_slider;
 
-    /* check if visual cursor is being dragged */
+    /* check if the slider is being dragged */
     nk_widget_state_reset(state);
     left_mouse_down = in && in->mouse.buttons[NK_BUTTON_LEFT].down;
-    left_mouse_click_in_cursor = in && nk_input_has_mouse_click_down_in_rect(in,
-            NK_BUTTON_LEFT, *visual_cursor, nk_true);
+    /* Anywhere on the track, not just the knob. Requiring the press to land
+       on the knob makes a slider fiddly to hit and surprises anyone used to
+       every other toolkit, where clicking the bar jumps the value there. */
+    left_mouse_click_in_slider = in && nk_input_has_mouse_click_down_in_rect(in,
+            NK_BUTTON_LEFT, bounds, nk_true);
 
-    if (left_mouse_down && left_mouse_click_in_cursor) {
-        float ratio = 0;
-        const float d = in->mouse.pos.x - (visual_cursor->x+visual_cursor->w*0.5f);
-        const float pxstep = bounds.w / slider_steps;
+    if (left_mouse_down && left_mouse_click_in_slider &&
+        bounds.w > 0 && slider_steps > 0) {
+        /* Absolute rather than accumulated: the value is read off the pointer
+           position, so a click lands exactly where it was aimed and a drag
+           tracks the pointer instead of drifting from it. Rounding to whole
+           steps keeps `step` meaningful, which a straight ratio would not. */
+        float ratio = (in->mouse.pos.x - bounds.x) / bounds.w;
+        float steps;
+        ratio = NK_CLAMP(0.0f, ratio, 1.0f);
+        steps = (float)((int)((ratio * slider_steps) + 0.5f));
 
-        /* only update value if the next slider step is reached */
         *state = NK_WIDGET_STATE_ACTIVE;
-        if (NK_ABS(d) >= pxstep) {
-            const float steps = (float)((int)(NK_ABS(d) / pxstep));
-            slider_value += (d > 0) ? (slider_step*steps) : -(slider_step*steps);
-            slider_value = NK_CLAMP(slider_min, slider_value, slider_max);
-            ratio = (slider_value - slider_min)/slider_step;
-            logical_cursor->x = bounds.x + (logical_cursor->w * ratio);
-            in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x = logical_cursor->x;
-        }
+        slider_value = slider_min + (slider_step * steps);
+        slider_value = NK_CLAMP(slider_min, slider_value, slider_max);
+        logical_cursor->x = bounds.x + (logical_cursor->w * steps);
+        in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x = logical_cursor->x;
     }
 
     /* slider widget state */
