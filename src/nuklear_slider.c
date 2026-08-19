@@ -31,12 +31,25 @@ nk_slider_behavior(nk_flags *state, struct nk_rect *logical_cursor,
            tracks the pointer instead of drifting from it. Rounding to whole
            steps keeps `step` meaningful, which a straight ratio would not. */
         float ratio = (in->mouse.pos.x - bounds.x) / bounds.w;
-        float steps;
+        float exact, whole, steps;
         ratio = NK_CLAMP(0.0f, ratio, 1.0f);
-        steps = (float)((int)((ratio * slider_steps) + 0.5f));
+        exact = ratio * slider_steps;
 
+        /* The final step is short whenever the range is not a whole number of
+           them -- 0..1 by 0.3 puts its last boundary at 0.9 -- and rounding
+           alone would leave the declared maximum unreachable. Treat the far
+           end as one more position and take whichever is nearer. A range that
+           does divide evenly has the two coincide, so it is unaffected. */
+        whole = (float)((int)slider_steps);
         *state = NK_WIDGET_STATE_ACTIVE;
-        slider_value = slider_min + (slider_step * steps);
+        if (exact > (whole + slider_steps) * 0.5f) {
+            slider_value = slider_max;
+            steps = slider_steps;
+        } else {
+            steps = (float)((int)(exact + 0.5f));
+            if (steps > whole) steps = whole;
+            slider_value = slider_min + (slider_step * steps);
+        }
         slider_value = NK_CLAMP(slider_min, slider_value, slider_max);
         logical_cursor->x = bounds.x + (logical_cursor->w * steps);
         in->mouse.buttons[NK_BUTTON_LEFT].clicked_pos.x = logical_cursor->x;
